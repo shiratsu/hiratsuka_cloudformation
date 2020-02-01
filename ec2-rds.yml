@@ -1,0 +1,99 @@
+# テンプレート形式のバージョン
+AWSTemplateFormatVersion: "2010-09-09"
+# テンプレートに関する記述
+Description: Provision EC2
+# 入力パラメータ
+Parameters:
+    # SSH用キーペアの指定
+    KeyPair:
+      Description: 20161228_intra
+      Type: AWS::EC2::KeyPair::KeyName 
+
+    
+# 構築するリソースの記述
+Resources:
+    PROD-PUBLIC-VPC:
+        Type: 'AWS::EC2::VPC'
+        Properties:
+          CidrBlock: '10.0.0.0/16'
+          Tags:
+            - Key: 'Name'
+              Value: 'prod-public-vpc'
+    PROD-PUBLIC-SUBNET:
+        Type: 'AWS::EC2::Subnet'
+        Properties:
+            # AZの指定
+            AvailabilityZone: 'ap-northeast-1a'
+            CidrBlock: '10.0.0.0/24'
+            # public IPの指定
+            MapPublicIpOnLaunch: true
+            Tags:
+            - Key: 'Name'
+                Value: 'prod-public-sub'
+            VpcId: !Ref PROD-PUBLIC-VPC
+    # Internet Gateway
+    PROD-PUBLIC-IGW:
+        Type: 'AWS::EC2::InternetGateway'
+        Properties:
+            Tags:
+            - Key: 'Name'
+                Value: 'prod-public-igw'
+    # igwをvpcにアタッチ
+    IgwAttache:
+        Type: 'AWS::EC2::VPCGatewayAttachment'
+        Properties:
+            InternetGatewayId: !Ref PROD-PUBLIC-IGW
+            VpcId: !Ref PROD-PUBLIC-VPC
+    # Public Route Table
+    PROD-PUBLIC-ROUTE-TABLE:
+        Type: 'AWS::EC2::RouteTable'
+        Properties:
+            VpcId: !Ref PROD-PUBLIC-VPC
+            Tags:
+            - Key: 'Name'
+                Value: 'prod-public-rtb'
+    # Public Route Tableを編集
+    ChangePublicRouteTable:
+        Type: AWS::EC2::Route
+        # IgwAttache 実行後に設定する
+        DependsOn: 'IgwAttache'
+        Properties:
+            RouteTableId: !Ref TestPublicRouteTable
+            # デフォルトゲートウェイ指定
+            DestinationCidrBlock: 0.0.0.0/0
+            GatewayId: !Ref PROD-PUBLIC-IGW
+    # ここまで見直しは終わった
+    #------------------------------------------------------------------------------        
+
+    # subnetにRoute tableを紐づける
+    SubnetPublicRouteTableAssociation:
+        Type: "AWS::EC2::SubnetRouteTableAssociation"
+        Properties:
+            RouteTableId: !Ref TestPublicRouteTable
+            SubnetId: !Ref TestPublicSubnet
+        # セキュリティグループ
+    TestSecurityGroup:
+        Type: "AWS::EC2::SecurityGroup"
+        Properties:
+            GroupDescription: TESTSG
+            VpcId: !Ref TestVPC
+            Tags:
+            - Key: 'Name'
+                Value: 'TESTSG'
+            SecurityGroupIngress:
+            - IpProtocol: tcp
+            FromPort: '22'
+            ToPort: '22'
+            CidrIp: xxx.xxx.xxx.xxx/32
+    Ec2Instance:
+        Type: 'AWS::EC2::Instance'
+        Properties:
+            KeyName: !Ref KeyPair
+            ImageId: !FindInMap 
+            - RegionMap
+            - !Ref 'AWS::Region'
+            - AMI
+            UserData: !Base64 '80'
+
+# 出力パラメータ
+Outputs:
